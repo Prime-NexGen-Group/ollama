@@ -1,0 +1,3 @@
+# Ollama data — local model storage (managed by Docker volume mount)
+models/
+open-webui-data/

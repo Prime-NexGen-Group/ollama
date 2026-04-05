@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ollama Model Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; padding: 2rem; }
+    h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+    .subtitle { color: #888; margin-bottom: 2rem; }
+    .config { background: #1a1a1a; padding: 1rem; border-radius: 8px; margin-bottom: 2rem; display: flex; gap: 1rem; align-items: center; }
+    .config label { color: #888; font-size: 0.85rem; }
+    .config input { background: #222; border: 1px solid #333; color: #fff; padding: 0.5rem; border-radius: 4px; width: 300px; font-family: monospace; }
+    .config button { background: #2563eb; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+    .config button:hover { background: #1d4ed8; }
+    .status { padding: 0.3rem 0.8rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+    .status.online { background: #064e3b; color: #34d399; }
+    .status.offline { background: #451a1a; color: #f87171; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1rem; }
+    .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 1.2rem; transition: border-color 0.2s; }
+    .card:hover { border-color: #2563eb; }
+    .card h3 { font-size: 1.1rem; margin-bottom: 0.5rem; color: #fff; }
+    .card .meta { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
+    .tag { background: #222; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; color: #aaa; }
+    .tag.type-chat { background: #1e3a5f; color: #60a5fa; }
+    .tag.type-embed { background: #3b1f5e; color: #c084fc; }
+    .tag.type-reason { background: #5e3b1f; color: #fbbf24; }
+    .card .size { color: #888; font-size: 0.85rem; }
+    .card .actions { margin-top: 0.8rem; display: flex; gap: 0.5rem; }
+    .card button { font-size: 0.8rem; padding: 0.4rem 0.8rem; border-radius: 4px; border: 1px solid #333; background: #222; color: #ccc; cursor: pointer; }
+    .card button:hover { background: #333; }
+    .card button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .card button.primary:hover { background: #1d4ed8; }
+    .running { display: inline-block; width: 8px; height: 8px; background: #34d399; border-radius: 50%; margin-right: 6px; }
+    .output { background: #111; border: 1px solid #333; border-radius: 6px; padding: 1rem; margin-top: 1rem; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; max-height: 300px; overflow-y: auto; display: none; }
+    .section { margin-top: 2rem; margin-bottom: 1rem; font-size: 1.2rem; border-bottom: 1px solid #333; padding-bottom: 0.5rem; }
+    .api-box { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .api-box code { background: #222; padding: 0.2rem 0.4rem; border-radius: 3px; font-size: 0.85rem; }
+    .api-box pre { background: #111; padding: 0.8rem; border-radius: 4px; margin-top: 0.5rem; overflow-x: auto; font-size: 0.8rem; }
+    #error { color: #f87171; margin-top: 1rem; display: none; }
+  </style>
+</head>
+<body>
+  <h1>Ollama Model Dashboard</h1>
+  <p class="subtitle">View models, test endpoints, and manage your local LLM setup</p>
+
+  <div class="config">
+    <div>
+      <label>Ollama URL</label><br>
+      <input type="text" id="baseUrl" value="http://localhost:11434" placeholder="http://localhost:11434">
+    </div>
+    <button onclick="refresh()">Connect</button>
+    <span id="statusBadge" class="status offline">Offline</span>
+  </div>
+
+  <div id="error"></div>
+
+  <h2 class="section">Installed Models</h2>
+  <div id="models" class="grid"></div>
+
+  <h2 class="section">Running Models</h2>
+  <div id="running" class="grid"></div>
+
+  <h2 class="section">Quick API Test</h2>
+  <div class="api-box">
+    <p>Send a message to test your setup:</p>
+    <div style="display:flex; gap:0.5rem; margin-top:0.8rem; align-items:center;">
+      <select id="testModel" style="background:#222;border:1px solid #333;color:#fff;padding:0.5rem;border-radius:4px;">
+      </select>
+      <input type="text" id="testPrompt" placeholder="Ask something..."
+        style="flex:1;background:#222;border:1px solid #333;color:#fff;padding:0.5rem;border-radius:4px;font-family:monospace;">
+      <button onclick="testChat()" style="background:#2563eb;color:#fff;border:none;padding:0.5rem 1rem;border-radius:4px;cursor:pointer;">Send</button>
+    </div>
+    <div id="testOutput" class="output"></div>
+  </div>
+
+  <h2 class="section">API Endpoints</h2>
+  <div class="api-box">
+    <p><strong>Chat</strong> — <code>POST /api/chat</code></p>
+    <pre>curl <span class="url-placeholder">http://localhost:11434</span>/api/chat \
+  -d '{"model":"llama3.2","messages":[{"role":"user","content":"Hello"}],"stream":false}'</pre>
+  </div>
+  <div class="api-box">
+    <p><strong>Generate</strong> — <code>POST /api/generate</code></p>
+    <pre>curl <span class="url-placeholder">http://localhost:11434</span>/api/generate \
+  -d '{"model":"llama3.2","prompt":"Hello","stream":false}'</pre>
+  </div>
+  <div class="api-box">
+    <p><strong>Embeddings</strong> — <code>POST /api/embed</code></p>
+    <pre>curl <span class="url-placeholder">http://localhost:11434</span>/api/embed \
+  -d '{"model":"nomic-embed-text","input":"Hello world"}'</pre>
+  </div>
+  <div class="api-box">
+    <p><strong>List Models</strong> — <code>GET /api/tags</code></p>
+    <pre>curl <span class="url-placeholder">http://localhost:11434</span>/api/tags</pre>
+  </div>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const base = () => $("#baseUrl").value.replace(/\/+$/, "");
+
+    function modelType(name) {
+      if (name.includes("embed") || name.includes("nomic") || name.includes("mxbai")) return "embed";
+      if (name.includes("deepseek-r1") || name.includes("r1")) return "reason";
+      return "chat";
+    }
+
+    function typeLabel(type) {
+      const map = { chat: "Chat", embed: "Embedding", reason: "Reasoning" };
+      return map[type] || "Chat";
+    }
+
+    function formatSize(bytes) {
+      if (bytes > 1e9) return (bytes / 1e9).toFixed(1) + " GB";
+      if (bytes > 1e6) return (bytes / 1e6).toFixed(0) + " MB";
+      return bytes + " B";
+    }
+
+    function showError(msg) {
+      const el = $("#error");
+      el.textContent = msg;
+      el.style.display = msg ? "block" : "none";
+    }
+
+    async function refresh() {
+      showError("");
+      try {
+        const healthResp = await fetch(base() + "/");
+        if (!healthResp.ok) throw new Error("Not reachable");
+        $("#statusBadge").className = "status online";
+        $("#statusBadge").textContent = "Online";
+
+        // Update URL placeholders in API examples
+        document.querySelectorAll(".url-placeholder").forEach(el => el.textContent = base());
+
+        // Fetch models
+        const tagsResp = await fetch(base() + "/api/tags");
+        const tagsData = await tagsResp.json();
+        renderModels(tagsData.models || []);
+
+        // Fetch running
+        const psResp = await fetch(base() + "/api/ps");
+        const psData = await psResp.json();
+        renderRunning(psData.models || []);
+
+      } catch (e) {
+        $("#statusBadge").className = "status offline";
+        $("#statusBadge").textContent = "Offline";
+        showError("Cannot connect to " + base() + " — is Ollama running?");
+        $("#models").innerHTML = "";
+        $("#running").innerHTML = "";
+      }
+    }
+
+    function renderModels(models) {
+      const select = $("#testModel");
+      select.innerHTML = "";
+      const grid = $("#models");
+
+      if (models.length === 0) {
+        grid.innerHTML = '<p style="color:#888">No models found. Pull one with: docker exec ollama ollama pull llama3.2</p>';
+        return;
+      }
+
+      grid.innerHTML = models.map(m => {
+        const type = modelType(m.name);
+        const details = m.details || {};
+        return `
+          <div class="card">
+            <h3>${m.name}</h3>
+            <div class="meta">
+              <span class="tag type-${type}">${typeLabel(type)}</span>
+              ${details.parameter_size ? `<span class="tag">${details.parameter_size}</span>` : ""}
+              ${details.quantization_level ? `<span class="tag">${details.quantization_level}</span>` : ""}
+              ${details.family ? `<span class="tag">${details.family}</span>` : ""}
+            </div>
+            <div class="size">${formatSize(m.size)}</div>
+            <div class="actions">
+              ${type !== "embed"
+                ? `<button class="primary" onclick="quickChat('${m.name}')">Chat</button>`
+                : `<button class="primary" onclick="quickEmbed('${m.name}')">Embed</button>`}
+              <button onclick="showInfo('${m.name}')">Info</button>
+              <button onclick="copyCmd('${m.name}', '${type}')">Copy curl</button>
+            </div>
+          </div>`;
+      }).join("");
+
+      models.filter(m => modelType(m.name) !== "embed").forEach(m => {
+        const opt = document.createElement("option");
+        opt.value = m.name;
+        opt.textContent = m.name;
+        select.appendChild(opt);
+      });
+    }
+
+    function renderRunning(models) {
+      const grid = $("#running");
+      if (models.length === 0) {
+        grid.innerHTML = '<p style="color:#888">No models currently loaded in memory.</p>';
+        return;
+      }
+      grid.innerHTML = models.map(m => `
+        <div class="card">
+          <h3><span class="running"></span>${m.name}</h3>
+          <div class="meta">
+            <span class="tag">VRAM: ${formatSize(m.size_vram || 0)}</span>
+            <span class="tag">Expires: ${new Date(m.expires_at).toLocaleTimeString()}</span>
+          </div>
+        </div>`).join("");
+    }
+
+    async function quickChat(model) {
+      const output = $("#testOutput");
+      output.style.display = "block";
+      output.textContent = "Loading...";
+      try {
+        const resp = await fetch(base() + "/api/chat", {
+          method: "POST",
+          body: JSON.stringify({
+            model, messages: [{ role: "user", content: "Hello! Introduce yourself in one sentence." }], stream: false,
+          }),
+        });
+        const data = await resp.json();
+        output.textContent = `[${model}] ${data.message.content}`;
+      } catch (e) { output.textContent = "Error: " + e.message; }
+    }
+
+    async function quickEmbed(model) {
+      const output = $("#testOutput");
+      output.style.display = "block";
+      output.textContent = "Generating embedding...";
+      try {
+        const resp = await fetch(base() + "/api/embed", {
+          method: "POST",
+          body: JSON.stringify({ model, input: "Hello world" }),
+        });
+        const data = await resp.json();
+        const vec = data.embeddings[0];
+        output.textContent = `[${model}] Dimensions: ${vec.length}\nFirst 10: [${vec.slice(0, 10).map(v => v.toFixed(4)).join(", ")}]`;
+      } catch (e) { output.textContent = "Error: " + e.message; }
+    }
+
+    async function showInfo(model) {
+      const output = $("#testOutput");
+      output.style.display = "block";
+      output.textContent = "Loading model info...";
+      try {
+        const resp = await fetch(base() + "/api/show", {
+          method: "POST",
+          body: JSON.stringify({ name: model }),
+        });
+        const data = await resp.json();
+        output.textContent = JSON.stringify(data.details, null, 2);
+      } catch (e) { output.textContent = "Error: " + e.message; }
+    }
+
+    function copyCmd(model, type) {
+      const url = base();
+      let cmd;
+      if (type === "embed") {
+        cmd = `curl ${url}/api/embed -d '{"model":"${model}","input":"Hello world"}'`;
+      } else {
+        cmd = `curl ${url}/api/chat -d '{"model":"${model}","messages":[{"role":"user","content":"Hello"}],"stream":false}'`;
+      }
+      navigator.clipboard.writeText(cmd);
+      alert("Copied to clipboard!");
+    }
+
+    async function testChat() {
+      const model = $("#testModel").value;
+      const prompt = $("#testPrompt").value || "Hello!";
+      const output = $("#testOutput");
+      output.style.display = "block";
+      output.textContent = `Sending to ${model}...`;
+      try {
+        const resp = await fetch(base() + "/api/chat", {
+          method: "POST",
+          body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }], stream: false }),
+        });
+        const data = await resp.json();
+        output.textContent = data.message.content;
+      } catch (e) { output.textContent = "Error: " + e.message; }
+    }
+
+    // Auto-connect on load
+    refresh();
+  </script>
+</body>
+</html>

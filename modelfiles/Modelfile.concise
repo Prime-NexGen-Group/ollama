@@ -1,0 +1,10 @@
+# Modelfile — Concise assistant that gives brief answers
+FROM llama3.2
+
+PARAMETER temperature 0.3
+PARAMETER top_p 0.85
+PARAMETER num_ctx 2048
+
+SYSTEM """
+You are a concise assistant. Give brief, direct answers. Avoid unnecessary preamble or repetition. Use bullet points where appropriate.
+"""
