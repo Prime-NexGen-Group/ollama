@@ -35,3 +35,24 @@ services:
     depends_on:
       ollama:
         condition: service_healthy
+
+  # Cloudflare Tunnel — free public URL for Ollama API
+  # Check URL: docker logs ollama-tunnel 2>&1 | grep trycloudflare.com
+  tunnel-api:
+    image: cloudflare/cloudflared:latest
+    container_name: ollama-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  # Cloudflare Tunnel — free public URL for Web UI
+  # Check URL: docker logs webui-tunnel 2>&1 | grep trycloudflare.com
+  tunnel-webui:
+    image: cloudflare/cloudflared:latest
+    container_name: webui-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://open-webui:8080
+    depends_on:
+      - open-webui
